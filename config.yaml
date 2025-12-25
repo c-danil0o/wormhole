@@ -1,0 +1,11 @@
+vmCount: 2  
+osDistro: "ubuntu/jammy64"
+osVersion: "20241002.0.0"
+cpus: 4
+memory: 4096
+gui: false
+ipBase: "192.168.56."
+guestPort: 6739
+hostPortBase: 11000
+nameBase: "node"
+backendType: "vagrant"
