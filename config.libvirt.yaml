@@ -1,0 +1,11 @@
+vmCount: 2
+cpus: 2
+memory: 2048
+nameBase: "node"
+backendType: "libvirt"
+diskImage: ""                        # path to bootc qcow2 (Supernova output)
+network: "default"
+osVariant: "fedora40"
+stateDir: "~/.wormhole/libvirt"
+natsAddress: "192.168.122.1:4222"    # host-published NATS port
+extras: {}
