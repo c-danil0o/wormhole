@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/c12s/wormhole/internal/config"
@@ -79,6 +80,11 @@ func (l *LibvirtBackend) createVM(name string) error {
 	disk := filepath.Join(dir, "disk.qcow2")
 	seed := filepath.Join(dir, "seed.iso")
 	domain := l.domain(name)
+	mac := deterministicMAC(name)
+	address, err := staticAddress(name, l.conf.IPBase)
+	if err != nil {
+		return err
+	}
 
 	if l.domainExists(domain) {
 		return fmt.Errorf("domain %s already exists (destroy it first)", domain)
@@ -87,24 +93,35 @@ func (l *LibvirtBackend) createVM(name string) error {
 		return err
 	}
 
-	if err := buildSeed(dir, domain, l.conf.NATSAddress, l.conf.Extras); err != nil {
+	if err := buildSeed(dir, domain, mac, address, gatewayFromBase(l.conf.IPBase), l.conf.NATSAddress, l.conf.Extras); err != nil {
 		return err
 	}
-	if err := createDiskOverlay(l.conf.DiskImage, disk); err != nil {
+	// per-VM copy of the source image: libvirt's dynamic ownership chowns
+	// every file in a disk's backing chain, so the pristine source must not
+	// be the backing file directly (a reflink copy is instant on CoW fs).
+	base := filepath.Join(dir, "base.qcow2")
+	if err := copyReflink(l.conf.DiskImage, base); err != nil {
+		return err
+	}
+	if err := createDiskOverlay(base, disk); err != nil {
 		return err
 	}
 
-	fmt.Printf("==> creating VM %s (domain %s)\n", name, domain)
-	return l.virshInstall(
+	fmt.Printf("==> creating VM %s (domain %s, mac %s, ip %s)\n", name, domain, mac, address)
+	args := []string{
 		"--name", domain,
 		"--memory", fmt.Sprintf("%d", l.conf.Memory),
 		"--vcpus", fmt.Sprintf("%d", l.conf.CPUs),
-		"--disk", "path="+disk+",format=qcow2",
-		"--disk", "path="+seed+",device=cdrom",
-		"--network", "network="+l.networkName()+",model=virtio",
+		"--disk", "path=" + disk + ",format=qcow2",
+		"--disk", "path=" + seed + ",device=cdrom",
+		"--network", "network=" + l.networkName() + ",model=virtio,mac=" + mac,
 		"--os-variant", l.osVariant(),
 		graphicsFlag(l.conf.GUI),
-	)
+	}
+	if l.conf.UEFI {
+		args = append(args, "--boot", "uefi")
+	}
+	return l.virshInstall(args...)
 }
 
 func (l *LibvirtBackend) Start(vms ...string) error {
@@ -205,6 +222,45 @@ func (l *LibvirtBackend) osVariant() string {
 		return l.conf.OSVariant
 	}
 	return "fedora40"
+}
+
+// staticAddress derives a stable IPv4 from the VM name: the trailing number
+// (node-3 -> 3) offsets ipBase+50, names without a number hash into the
+// pool. Keeps experiments reproducible: node-1 is always the same address.
+func staticAddress(name, ipBase string) (string, error) {
+	digits := ""
+	for _, r := range name {
+		if r >= '0' && r <= '9' {
+			digits += string(r)
+		}
+	}
+	if digits == "" {
+		return "", fmt.Errorf("vm name %q has no trailing number for static addressing (ipBase %s)", name, ipBase)
+	}
+	n, err := strconv.Atoi(digits)
+	if err != nil || n < 0 || n > 150 {
+		return "", fmt.Errorf("vm name %q: bad node number %q", name, digits)
+	}
+	return ipBase + strconv.Itoa(50+n), nil
+}
+
+func gatewayFromBase(ipBase string) string {
+	return ipBase + "1"
+}
+
+// copyReflink copies a file using CoW reflink when the filesystem supports
+// it (instant even for multi-GB images), falling back to a plain copy.
+func copyReflink(src, dst string) error {
+	if _, err := exec.LookPath("cp"); err == nil {
+		if err := exec.Command("cp", "--reflink=auto", src, dst).Run(); err == nil {
+			return nil
+		}
+	}
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, 0o644)
 }
 
 // createDiskOverlay makes a small qcow2 overlay backed by the source image;

@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -26,6 +28,7 @@ type Config struct {
 	OSVariant   string            `yaml:"osVariant"`   // virt-install --os-variant, default "fedora40"
 	StateDir    string            `yaml:"stateDir"`    // per-VM disks + seeds, default ~/.wormhole/libvirt
 	NATSAddress string            `yaml:"natsAddress"` // written into /var/lib/c12s/node.env on first boot
+	UEFI        bool              `yaml:"uefi"`        // boot via OVMF (bootc images are UEFI-only)
 	Extras      map[string]string `yaml:"extras"`      // extra key=value pairs for node.env
 }
 
@@ -81,7 +84,21 @@ func (conf *Config) validateLibvirt() error {
 	if conf.NATSAddress == "" {
 		return fmt.Errorf("natsAddress is required for the libvirt backend (written into node.env)")
 	}
+	if conf.IPBase == "" {
+		return fmt.Errorf("ipBase is required for the libvirt backend (static per-VM addressing)")
+	}
 	return nil
+}
+
+func expandTilde(path *string) {
+	if path == nil || !strings.HasPrefix(*path, "~/") {
+		return
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	*path = filepath.Join(home, (*path)[2:])
 }
 
 func LoadFromYaml(path string) (*Config, error) {
@@ -95,6 +112,8 @@ func LoadFromYaml(path string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unmarshal yaml: %w", err)
 	}
+	expandTilde(&conf.DiskImage)
+	expandTilde(&conf.StateDir)
 
 	err = conf.Validate()
 	if err != nil {

@@ -1,11 +1,12 @@
-vmCount: 2
+vmCount: 1
 cpus: 2
 memory: 2048
 nameBase: "node"
 backendType: "libvirt"
-diskImage: ""                        # path to bootc qcow2 (Supernova output)
+diskImage: "~/.wormhole/images/edge-base-v1.0.qcow2"
 network: "default"
-osVariant: "fedora40"
+osVariant: "fedora41"
+uefi: true
 stateDir: "~/.wormhole/libvirt"
 natsAddress: "192.168.122.1:4222"    # host-published NATS port
-extras: {}
+ipBase: "192.168.122."
