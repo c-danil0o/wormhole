@@ -17,6 +17,9 @@ import (
 func buildSeed(dir, domain, mac, address, gateway, natsAddress string, extras map[string]string) error {
 	metaData := fmt.Sprintf("instance-id: %s\nlocal-hostname: %s\n", domain, domain)
 
+	// Read host SSH public keys for passwordless access from the lab host.
+	sshKeys := collectSSHPubKeys()
+
 	env := strings.Join(nodeEnvLines(natsAddress, extras), "\n")
 	userData := fmt.Sprintf(`#cloud-config
 users:
@@ -26,6 +29,8 @@ users:
     shell: /bin/bash
     lock_passwd: false
     sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+%s
 chpasswd:
   expire: false
   users:
@@ -40,7 +45,7 @@ write_files:
 %s
 runcmd:
   - systemctl enable --now serial-getty@ttyS0.service
-`, indent(env, "      "))
+`, indent(strings.Join(sshKeys, "\n"), "      "), indent(env, "      "))
 
 	// explicit network config (NoCloud seed, format v1): match the NIC by
 	// the deterministic MAC wormhole assigns, static address per VM name.
@@ -113,6 +118,32 @@ func nodeEnvLines(natsAddress string, extras map[string]string) []string {
 		lines = append(lines, k+"="+v)
 	}
 	return lines
+}
+
+// collectSSHPubKeys reads ~/.ssh/id_*.pub files so cloud-init can inject
+// them into the VM user's authorized_keys. Returns YAML list items
+// (each prefixed with "- ").
+func collectSSHPubKeys() []string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return []string{"- \"\""}
+	}
+	matches, _ := filepath.Glob(filepath.Join(home, ".ssh", "id_*.pub"))
+	var keys []string
+	for _, m := range matches {
+		data, err := os.ReadFile(m)
+		if err != nil {
+			continue
+		}
+		key := strings.TrimSpace(string(data))
+		if key != "" {
+			keys = append(keys, fmt.Sprintf("- %s", key))
+		}
+	}
+	if len(keys) == 0 {
+		return []string{"- \"\""}
+	}
+	return keys
 }
 
 func indent(s, prefix string) string {
