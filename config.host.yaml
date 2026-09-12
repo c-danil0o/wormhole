@@ -1,0 +1,20 @@
+vmCount: 1
+cpus: 4
+memory: 4096
+nameBase: "host"
+backendType: "libvirt"
+diskImage: "~/.wormhole/images/edge-base-v3.0.qcow2"
+network: "default"
+osVariant: "fedora41"
+uefi: true
+# nested KVM: the guest hosts VMs, so it must see the virtualization extensions
+cpuModel: "host-passthrough"
+stateDir: "~/.wormhole/libvirt"
+natsAddress: "192.168.122.1:4222"    # host-published NATS port
+ipBase: "192.168.122."
+# guest-side libvirt network for the VMs this host creates (must differ from
+# the outer 192.168.122.0/24 the guest's own NIC sits on)
+vmNetwork: "c12s-vms"
+vmIpBase: "192.168.123"
+extras:
+  SINGULARITY_URL: "http://192.168.122.1:8081"

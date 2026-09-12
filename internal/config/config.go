@@ -29,6 +29,9 @@ type Config struct {
 	StateDir    string            `yaml:"stateDir"`    // per-VM disks + seeds, default ~/.wormhole/libvirt
 	NATSAddress string            `yaml:"natsAddress"` // written into /var/lib/c12s/node.env on first boot
 	UEFI        bool              `yaml:"uefi"`        // boot via OVMF (bootc images are UEFI-only)
+	CPUModel    string            `yaml:"cpuModel"`    // virt-install --cpu (e.g. host-passthrough for nested KVM)
+	VMNetwork   string            `yaml:"vmNetwork"`   // guest-side libvirt network for VMs this node will host
+	VMIpBase    string            `yaml:"vmIpBase"`    // subnet base of that network, e.g. "192.168.123"
 	Extras      map[string]string `yaml:"extras"`      // extra key=value pairs for node.env
 }
 
@@ -86,6 +89,9 @@ func (conf *Config) validateLibvirt() error {
 	}
 	if conf.IPBase == "" {
 		return fmt.Errorf("ipBase is required for the libvirt backend (static per-VM addressing)")
+	}
+	if conf.VMNetwork != "" && conf.VMIpBase == "" {
+		return fmt.Errorf("vmIpBase is required when vmNetwork is set (subnet for guest-hosted VMs)")
 	}
 	return nil
 }

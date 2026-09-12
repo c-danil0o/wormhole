@@ -13,14 +13,54 @@ import (
 // volume labelled `cidata` on first boot. The user-data writes
 // /var/lib/c12s/node.env — the node's control-plane configuration, which
 // persists across every bootc switch and rollback (decision D5/D7.2).
+//
+// When the VM is intended to host VMs (vmNetwork set), the seed also defines
+// and starts a dedicated libvirt network inside the guest. It must NOT be the
+// libvirt "default" network: the guest's own NIC already sits on the outer
+// 192.168.122.0/24, so a second interface on the same subnet would break the
+// guest's routing. The reconciler's VM_IP_BASE/VM_NETWORK env point at it.
 
-func buildSeed(dir, domain, mac, address, gateway, natsAddress string, extras map[string]string) error {
-	metaData := fmt.Sprintf("instance-id: %s\nlocal-hostname: %s\n", domain, domain)
+type seedSpec struct {
+	dir         string
+	domain      string
+	mac         string
+	address     string
+	gateway     string
+	natsAddress string
+	extras      map[string]string
+	vmNetwork   string
+	vmIpBase    string
+}
+
+func buildSeed(spec seedSpec) error {
+	metaData := fmt.Sprintf("instance-id: %s\nlocal-hostname: %s\n", spec.domain, spec.domain)
 
 	// Read host SSH public keys for passwordless access from the lab host.
 	sshKeys := collectSSHPubKeys()
 
-	env := strings.Join(nodeEnvLines(natsAddress, extras), "\n")
+	env := strings.Join(nodeEnvLines(spec.natsAddress, spec.extras), "\n")
+	writeFiles := fmt.Sprintf(`  - path: /var/lib/c12s/node.env
+    permissions: '0644'
+    content: |
+%s
+`, indent(env, "      "))
+
+	runcmd := "  - systemctl enable --now serial-getty@ttyS0.service"
+	if spec.vmNetwork != "" {
+		writeFiles += fmt.Sprintf(`  - path: /var/lib/c12s/vm-network.xml
+    permissions: '0644'
+    content: |
+%s
+`, indent(vmNetworkXML(spec.vmNetwork, spec.vmIpBase), "      "))
+		runcmd += fmt.Sprintf(`
+  - |
+    if command -v virsh >/dev/null 2>&1; then
+      virsh net-define /var/lib/c12s/vm-network.xml || true
+      virsh net-start %s || true
+      virsh net-autostart %s || true
+    fi`, spec.vmNetwork, spec.vmNetwork)
+	}
+
 	userData := fmt.Sprintf(`#cloud-config
 users:
   - name: c12s
@@ -39,13 +79,10 @@ chpasswd:
       type: text
 ssh_pwauth: true
 write_files:
-  - path: /var/lib/c12s/node.env
-    permissions: '0644'
-    content: |
 %s
 runcmd:
-  - systemctl enable --now serial-getty@ttyS0.service
-`, indent(strings.Join(sshKeys, "\n"), "      "), indent(env, "      "))
+%s
+`, indent(strings.Join(sshKeys, "\n"), "      "), writeFiles, runcmd)
 
 	// explicit network config (NoCloud seed, format v1): match the NIC by
 	// the deterministic MAC wormhole assigns, static address per VM name.
@@ -62,11 +99,11 @@ config:
         address: %s
         netmask: 255.255.255.0
         gateway: %s
-`, mac, address, gateway)
+`, spec.mac, spec.address, spec.gateway)
 
-	metaPath := filepath.Join(dir, "meta-data")
-	userPath := filepath.Join(dir, "user-data")
-	netPath := filepath.Join(dir, "network-config")
+	metaPath := filepath.Join(spec.dir, "meta-data")
+	userPath := filepath.Join(spec.dir, "user-data")
+	netPath := filepath.Join(spec.dir, "network-config")
 	if err := os.WriteFile(metaPath, []byte(metaData), 0o644); err != nil {
 		return fmt.Errorf("write meta-data: %w", err)
 	}
@@ -77,7 +114,7 @@ config:
 		return fmt.Errorf("write network-config: %w", err)
 	}
 
-	seedPath := filepath.Join(dir, "seed.iso")
+	seedPath := filepath.Join(spec.dir, "seed.iso")
 	cmd := exec.Command(
 		"xorriso", "-as", "mkisofs",
 		"-o", seedPath,
@@ -90,6 +127,22 @@ config:
 		return fmt.Errorf("build seed iso (xorriso): %s: %w", string(out), err)
 	}
 	return nil
+}
+
+// vmNetworkXML is the libvirt network the guest's Star reconciler uses for
+// the VMs it creates (VM_NETWORK/VM_IP_BASE env in node.env match it).
+func vmNetworkXML(name, ipBase string) string {
+	return fmt.Sprintf(`<network>
+  <name>%s</name>
+  <bridge name='virbr-c12s'/>
+  <forward mode='nat'/>
+  <ip address='%s.1' netmask='255.255.255.0'>
+    <dhcp>
+      <range start='%s.2' end='%s.254'/>
+    </dhcp>
+  </ip>
+</network>
+`, name, ipBase, ipBase, ipBase)
 }
 
 // deterministicMAC maps a VM name to a stable locally-administered MAC in

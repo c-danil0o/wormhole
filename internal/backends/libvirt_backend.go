@@ -93,7 +93,17 @@ func (l *LibvirtBackend) createVM(name string) error {
 		return err
 	}
 
-	if err := buildSeed(dir, domain, mac, address, gatewayFromBase(l.conf.IPBase), l.conf.NATSAddress, l.conf.Extras); err != nil {
+	if err := buildSeed(seedSpec{
+		dir:         dir,
+		domain:      domain,
+		mac:         mac,
+		address:     address,
+		gateway:     gatewayFromBase(l.conf.IPBase),
+		natsAddress: l.conf.NATSAddress,
+		extras:      l.seedExtras(),
+		vmNetwork:   l.conf.VMNetwork,
+		vmIpBase:    l.conf.VMIpBase,
+	}); err != nil {
 		return err
 	}
 	// per-VM copy of the source image: libvirt's dynamic ownership chowns
@@ -120,6 +130,11 @@ func (l *LibvirtBackend) createVM(name string) error {
 	}
 	if l.conf.UEFI {
 		args = append(args, "--boot", "uefi")
+	}
+	if l.conf.CPUModel != "" {
+		// e.g. host-passthrough so a guest that will host VMs sees the
+		// virtualization extensions (nested KVM)
+		args = append(args, "--cpu", l.conf.CPUModel)
 	}
 	return l.virshInstall(args...)
 }
@@ -215,6 +230,22 @@ func (l *LibvirtBackend) networkName() string {
 		return l.conf.Network
 	}
 	return "default"
+}
+
+// seedExtras is what lands in /var/lib/c12s/node.env on first boot: operator
+// extras plus the reconciler settings a VM-hosting node needs.
+func (l *LibvirtBackend) seedExtras() map[string]string {
+	extras := map[string]string{}
+	for k, v := range l.conf.Extras {
+		extras[k] = v
+	}
+	if l.conf.VMNetwork != "" {
+		extras["VM_NETWORK"] = l.conf.VMNetwork
+	}
+	if l.conf.VMIpBase != "" {
+		extras["VM_IP_BASE"] = l.conf.VMIpBase
+	}
+	return extras
 }
 
 func (l *LibvirtBackend) osVariant() string {
