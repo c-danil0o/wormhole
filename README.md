@@ -63,6 +63,9 @@ wormhole -c config.host.yaml destroy host-1
   MAC is derived from it. Keep `ipOffset` ranges disjoint across configs —
   `create` refuses an address another VM in the state dir already holds.
 - `create` skips VMs that already exist, so it is safe to re-run.
+- `diskImage` must be built from edge-base v3.10 or newer (Supernova
+  `/build/qcow2`): older disks lack greenboot's GRUB snippet on `/boot`, and a
+  failing update then reboots forever instead of rolling back.
 - Domains live in `qemu:///system`. Plain `virsh` as a normal user talks to
   `qemu:///session` and will show nothing — use `virsh -c qemu:///system ...`
   (or `export LIBVIRT_DEFAULT_URI=qemu:///system`).
