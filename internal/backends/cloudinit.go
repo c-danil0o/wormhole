@@ -2,7 +2,7 @@ package backends
 
 import (
 	"fmt"
-	"hash/fnv"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -145,14 +145,16 @@ func vmNetworkXML(name, ipBase string) string {
 `, name, ipBase, ipBase, ipBase)
 }
 
-// deterministicMAC maps a VM name to a stable locally-administered MAC in
-// the QEMU/KVM OUI (52:54:00), so the seed's network-config can match the
-// NIC before the VM exists and virt-install can pre-assign the same MAC.
-func deterministicMAC(name string) string {
-	h := fnv.New32a()
-	h.Write([]byte(name))
-	b := h.Sum32()
-	return fmt.Sprintf("52:54:00:c1:2e:%02x", b&0xFF)
+// deterministicMAC maps a VM's static IPv4 to a stable MAC in the QEMU/KVM
+// OUI (52:54:00), so the seed's network-config can match the NIC before the
+// VM exists and virt-install can pre-assign the same MAC. Derived from the
+// address (unique per VM) rather than a name hash, which collided.
+func deterministicMAC(address string) string {
+	ip := net.ParseIP(address).To4()
+	if ip == nil {
+		return "52:54:00:00:00:01"
+	}
+	return fmt.Sprintf("52:54:00:%02x:%02x:%02x", ip[1], ip[2], ip[3])
 }
 
 func nodeEnvLines(natsAddress string, extras map[string]string) []string {

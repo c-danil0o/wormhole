@@ -39,6 +39,36 @@ go build -o wormhole
 ```bash
 export PATH=$PATH:$(pwd)
 ```
+## libvirt backend (bootc nodes)
+
+The Vagrant backend runs plain Ubuntu+Docker nodes and cannot test OS updates.
+For bootc nodes use `backendType: "libvirt"`: each VM is a qcow2 overlay over a
+bootc disk image plus a NoCloud seed that writes `/var/lib/c12s/node.env`; star
+starts on boot and enrolls into the control plane by itself.
+
+Requirements: `virt-install`, `virsh`, `qemu-img`, `xorriso`, and a user in the
+`libvirt` group. Configs in this repo:
+
+| file | VMs | addresses |
+|------|-----|-----------|
+| `config.host.yaml` | `host-1` — nested-KVM host that runs VMs for the reconciler | `ipOffset` 50 → `192.168.122.51` |
+| `config.libvirt.yaml` | `node-1..N` — plain bootc nodes | `ipOffset` 60 → `192.168.122.61..` |
+
+```bash
+wormhole -c config.host.yaml create       # no names = every VM in the config
+wormhole -c config.host.yaml destroy host-1
+```
+
+- VM names are `<nameBase>-<n>`; the address is `ipBase + ipOffset + n` and the
+  MAC is derived from it. Keep `ipOffset` ranges disjoint across configs —
+  `create` refuses an address another VM in the state dir already holds.
+- `create` skips VMs that already exist, so it is safe to re-run.
+- Domains live in `qemu:///system`. Plain `virsh` as a normal user talks to
+  `qemu:///session` and will show nothing — use `virsh -c qemu:///system ...`
+  (or `export LIBVIRT_DEFAULT_URI=qemu:///system`).
+- Log in as `c12s` (password `c12s`, or your `~/.ssh/id_*.pub` key):
+  `ssh c12s@192.168.122.51`.
+
 ## Command reference
 ### VM lifecycle management
 Setup - reads the YAML and generates Vagrantfile

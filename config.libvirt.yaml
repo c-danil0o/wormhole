@@ -3,10 +3,11 @@ cpus: 2
 memory: 2048
 nameBase: "node"
 backendType: "libvirt"
-diskImage: "~/.wormhole/images/edge-base-v2.0.qcow2"
+diskImage: "~/.wormhole/images/edge-base-v3.9.qcow2"
 network: "default"
 osVariant: "fedora41"
 uefi: true
 stateDir: "~/.wormhole/libvirt"
 natsAddress: "192.168.122.1:4222"    # host-published NATS port
 ipBase: "192.168.122."
+ipOffset: 60                         # node-N -> .6N; host config uses 50 (host-1 -> .51)

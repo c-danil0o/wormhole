@@ -3,7 +3,7 @@ cpus: 4
 memory: 4096
 nameBase: "host"
 backendType: "libvirt"
-diskImage: "~/.wormhole/images/edge-base-v3.0.qcow2"
+diskImage: "~/.wormhole/images/edge-base-v3.9.qcow2"
 network: "default"
 osVariant: "fedora41"
 uefi: true

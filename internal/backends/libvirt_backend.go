@@ -66,8 +66,28 @@ func (l *LibvirtBackend) vmDir(name string) string {
 	return filepath.Join(l.stateDir(), name)
 }
 
+// names defaults an empty selection to every configured VM
+// (<nameBase>-1 .. <nameBase>-<vmCount>), matching vagrant's "all" semantics.
+func (l *LibvirtBackend) names(vms []string) []string {
+	if len(vms) > 0 {
+		return vms
+	}
+	all := make([]string, 0, l.conf.VMCount)
+	for i := 1; i <= l.conf.VMCount; i++ {
+		all = append(all, fmt.Sprintf("%s-%d", l.conf.NameBase, i))
+	}
+	return all
+}
+
 func (l *LibvirtBackend) Create(vms ...string) error {
-	for _, vm := range vms {
+	if err := l.Setup(l.conf); err != nil {
+		return err
+	}
+	for _, vm := range l.names(vms) {
+		if l.domainExists(l.domain(vm)) {
+			fmt.Printf("==> %s already exists, skipping (destroy it to recreate)\n", l.domain(vm))
+			continue
+		}
 		if err := l.createVM(vm); err != nil {
 			return fmt.Errorf("create %s: %w", vm, err)
 		}
@@ -80,15 +100,15 @@ func (l *LibvirtBackend) createVM(name string) error {
 	disk := filepath.Join(dir, "disk.qcow2")
 	seed := filepath.Join(dir, "seed.iso")
 	domain := l.domain(name)
-	mac := deterministicMAC(name)
-	address, err := staticAddress(name, l.conf.IPBase)
+	address, err := staticAddress(name, l.conf.IPBase, l.ipOffset())
 	if err != nil {
 		return err
 	}
-
-	if l.domainExists(domain) {
-		return fmt.Errorf("domain %s already exists (destroy it first)", domain)
+	mac := deterministicMAC(address)
+	if owner := l.addressOwner(address, name); owner != "" {
+		return fmt.Errorf("address %s already used by wormhole VM %s (set a disjoint ipOffset in the config)", address, owner)
 	}
+
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -174,7 +194,7 @@ func (l *LibvirtBackend) StopNodes(vms ...string) error {
 }
 
 func (l *LibvirtBackend) Destroy(vms ...string) error {
-	for _, vm := range vms {
+	for _, vm := range l.names(vms) {
 		domain := l.domain(vm)
 		fmt.Printf("==> destroying %s\n", domain)
 		// destroy (poweroff) first so undefine always works
@@ -194,7 +214,7 @@ func (l *LibvirtBackend) Destroy(vms ...string) error {
 }
 
 func (l *LibvirtBackend) forEach(vms []string, action string, _ any) error {
-	for _, vm := range vms {
+	for _, vm := range l.names(vms) {
 		domain := l.domain(vm)
 		fmt.Printf("==> virsh %s %s\n", action, domain)
 		if err := l.virsh(action, domain); err != nil {
@@ -255,10 +275,40 @@ func (l *LibvirtBackend) osVariant() string {
 	return "fedora40"
 }
 
+func (l *LibvirtBackend) ipOffset() int {
+	if l.conf.IPOffset > 0 {
+		return l.conf.IPOffset
+	}
+	return 50
+}
+
+// addressOwner returns the other VM in the state dir whose seed already
+// claims address, or "" if it is free. Configs share the state dir and the
+// subnet, so host-1 and node-1 would otherwise both land on .51.
+func (l *LibvirtBackend) addressOwner(address, self string) string {
+	seeds, _ := filepath.Glob(filepath.Join(l.stateDir(), "*", "network-config"))
+	for _, seed := range seeds {
+		vm := filepath.Base(filepath.Dir(seed))
+		if vm == self {
+			continue
+		}
+		data, err := os.ReadFile(seed)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			if strings.TrimSpace(line) == "address: "+address {
+				return vm
+			}
+		}
+	}
+	return ""
+}
+
 // staticAddress derives a stable IPv4 from the VM name: the trailing number
-// (node-3 -> 3) offsets ipBase+50, names without a number hash into the
-// pool. Keeps experiments reproducible: node-1 is always the same address.
-func staticAddress(name, ipBase string) (string, error) {
+// (node-3 -> 3) is added to ipBase+offset. Keeps experiments reproducible:
+// node-1 is always the same address.
+func staticAddress(name, ipBase string, offset int) (string, error) {
 	digits := ""
 	for _, r := range name {
 		if r >= '0' && r <= '9' {
@@ -269,10 +319,10 @@ func staticAddress(name, ipBase string) (string, error) {
 		return "", fmt.Errorf("vm name %q has no trailing number for static addressing (ipBase %s)", name, ipBase)
 	}
 	n, err := strconv.Atoi(digits)
-	if err != nil || n < 0 || n > 150 {
-		return "", fmt.Errorf("vm name %q: bad node number %q", name, digits)
+	if err != nil || n < 0 || offset+n > 254 {
+		return "", fmt.Errorf("vm name %q: bad node number %q for ipOffset %d", name, digits, offset)
 	}
-	return ipBase + strconv.Itoa(50+n), nil
+	return ipBase + strconv.Itoa(offset+n), nil
 }
 
 func gatewayFromBase(ipBase string) string {

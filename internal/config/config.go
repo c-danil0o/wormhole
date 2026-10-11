@@ -32,6 +32,7 @@ type Config struct {
 	CPUModel    string            `yaml:"cpuModel"`    // virt-install --cpu (e.g. host-passthrough for nested KVM)
 	VMNetwork   string            `yaml:"vmNetwork"`   // guest-side libvirt network for VMs this node will host
 	VMIpBase    string            `yaml:"vmIpBase"`    // subnet base of that network, e.g. "192.168.123"
+	IPOffset    int               `yaml:"ipOffset"`    // <name>-N gets ipBase+ipOffset+N, default 50; keep ranges disjoint across configs
 	Extras      map[string]string `yaml:"extras"`      // extra key=value pairs for node.env
 }
 
@@ -80,9 +81,6 @@ func (conf *Config) validateVagrant() error {
 func (conf *Config) validateLibvirt() error {
 	if conf.DiskImage == "" {
 		return fmt.Errorf("diskImage is required for the libvirt backend")
-	}
-	if _, err := os.Stat(conf.DiskImage); err != nil {
-		return fmt.Errorf("diskImage %s: %w", conf.DiskImage, err)
 	}
 	if conf.NATSAddress == "" {
 		return fmt.Errorf("natsAddress is required for the libvirt backend (written into node.env)")
