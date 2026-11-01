@@ -1,119 +1,101 @@
-# Wormhole CLI Documentation
-Tool for starting local development with VM-s running agents etc. and control plane communicating with with nodes.
-## Features
-- VM lifecycle management: setup, create, stop, resume, reload, shutdown, destroy
-- Node management: start-nodes, stop-nodes
-## Prerequisites
-Ensure you have the following installed: 
-- [Go](https://go.dev/doc/install) (version 1.16 or higher)
-- [Git](https://git-scm.com/install/)
-- [Docker](https://docs.docker.com/engine/install/) (for running the complete environment)
-- [Vagrant](https://developer.hashicorp.com/vagrant/docs/installation)
-- [VirtualBox](https://www.virtualbox.org/wiki/Downloads)
-Additionally, you need to clone and set up the tools repository from [https://github.com/c12s/tools](https://github.com/c12s/tools), which includes scripts to pull all other repositories and start Docker containers.
-## Installation
-1. Clone the tools repository: 
-```bash
-git clone https://github.com/c12s/tools.git
-```
-2. Navigate to the tools directory and follow the setup instructions in the README.md file of the tools repository to pull all necessary repositories and start Docker containers:
-```bash
-cd tools
-./install.sh
-./control_plane_start.sh
-```
-3. Clone the cockpit repository in the same parent directory where the tools repository is located:
-```bash
-cd ..
-git clone https://github.com/radepejanvic/wormhole.git
-```
-4. Navigate to the cockpit project directory:
-```bash
-cd wormhole
-```
-5. Build the CLI: 
-```bash
-go build -o wormhole
-```
-6. Add the executable to your PATH:
-```bash
-export PATH=$PATH:$(pwd)
-```
-## libvirt backend (bootc nodes)
+# wormhole — local VM provisioning CLI
 
-The Vagrant backend runs plain Ubuntu+Docker nodes and cannot test OS updates.
-For bootc nodes use `backendType: "libvirt"`: each VM is a qcow2 overlay over a
-bootc disk image plus a NoCloud seed that writes `/var/lib/c12s/node.env`; star
-starts on boot and enrolls into the control plane by itself.
+Turns a qcow2 bootc disk into running lab machines: creates libvirt VMs with
+a NoCloud seed that writes `/var/lib/c12s/node.env`, then lets the VMs boot
+and enroll into the control plane by themselves. A **lab/dev tool** — it is
+explicitly not part of the control plane's delivery path (first install is
+out of CP scope; see the thesis plan's provisioning boundary).
 
-Requirements: `virt-install`, `virsh`, `qemu-img`, `xorriso`, and a user in the
-`libvirt` group. Configs in this repo:
+## Role in c12s
+
+| Task | How |
+|---|---|
+| Lab host with nested KVM (`host-1`) | `wormhole -c config.host.yaml create` — runs host-1, which hosts the VM reconciler and its own nested VMs |
+| Plain bootc nodes (`node-1..N`) | `wormhole -c config.libvirt.yaml create` |
+| Legacy Vagrant nodes | `backendType: "vagrant"` — plain Ubuntu+Docker VMs; **cannot test bootc** |
+| Provisioning data | NoCloud seed: `/var/lib/c12s/node.env` (CP addresses), optional guest-side libvirt network XML, SSH user `c12s` (password `c12s`, or your `~/.ssh/id_*.pub` injected) |
+
+VMs created this way are ordinary c12s nodes: from the control plane's point
+of view nothing distinguishes them from hand-provisioned hardware.
+
+## Config files in this repo
 
 | file | VMs | addresses |
 |------|-----|-----------|
 | `config.host.yaml` | `host-1` — nested-KVM host that runs VMs for the reconciler | `ipOffset` 50 → `192.168.122.51` |
 | `config.libvirt.yaml` | `node-1..N` — plain bootc nodes | `ipOffset` 60 → `192.168.122.61..` |
 
-```bash
-wormhole -c config.host.yaml create       # no names = every VM in the config
-wormhole -c config.host.yaml destroy host-1
-```
-
-- VM names are `<nameBase>-<n>`; the address is `ipBase + ipOffset + n` and the
-  MAC is derived from it. Keep `ipOffset` ranges disjoint across configs —
-  `create` refuses an address another VM in the state dir already holds.
-- `create` skips VMs that already exist, so it is safe to re-run.
 - `diskImage` must be built from edge-base v3.10 or newer (Supernova
   `/build/qcow2`): older disks lack greenboot's GRUB snippet on `/boot`, and a
   failing update then reboots forever instead of rolling back.
+- VM names are `<nameBase>-<n>`; the address is `ipBase + ipOffset + n` and
+  the MAC is derived from it. Keep `ipOffset` ranges disjoint across configs —
+  `create` refuses an address another VM in the state dir already holds.
 - Domains live in `qemu:///system`. Plain `virsh` as a normal user talks to
-  `qemu:///session` and will show nothing — use `virsh -c qemu:///system ...`
-  (or `export LIBVIRT_DEFAULT_URI=qemu:///system`).
-- Log in as `c12s` (password `c12s`, or your `~/.ssh/id_*.pub` key):
-  `ssh c12s@192.168.122.51`.
+  `qemu:///session` and shows nothing — use `virsh -c qemu:///system ...`.
 
-## Command reference
-### VM lifecycle management
-Setup - reads the YAML and generates Vagrantfile
+## Build and usage
+
 ```bash
-wormhole setup --config ./config.yaml
+go build -o wormhole .
+
+wormhole -c config.host.yaml create            # no names = every VM in the config
+wormhole -c config.host.yaml create host-1     # one VM
+wormhole -c config.host.yaml destroy host-1    # delete VM + all its data
 ```
-Create - creates VMs (one, more or all if nothing specified)
-```bash 
-wormhole create 
-wormhole create node0
-```
-Stop - suspends VMs (one, more or all if nothing specified)
-```bash
-wormhole stop
-wormhole stop node0
-```
-Resume - resumes VMs (one, more or all if nothing specified)
-```bash 
-wormhole resume
-wormhole resume node0
-```
-Reload - recreates VM reading Vagrantfile again (one, more or all if nothing specified)
-```bash
-wormhole reload
-wormhole reload node0
-```
-Shutdown - gracefully powers off VMs (one, more or all if nothing specified)
-```bash
-wormhole shutdown
-wormhole shutdown node0
-```
-Destroy - deletes VMs and all of their data (one, more or all if nothing specified)
-```
-wormhole destroy
-wormhole destroy node0 
-```
-### Node management
-Start nodes - runs the `/vagrant/node_start.sh` remotely for specified VMs
-```bash 
-wormhole start-nodes node0 node1
-```
-Stop nodes - runs the `/vagrant/nodes_stop.sh` remotely for specified VMs
-```bash
-wormhole stop-nodes node0 node1
-```
+
+`--config/-c` defaults to `config.yaml`. All lifecycle commands accept VM
+names; without them they act on **all** VMs from the config:
+
+| Command | Effect |
+|---|---|
+| `create` | create VM(s); skips ones that already exist (safe to re-run) |
+| `stop` / `resume` | suspend / resume (libvirt backend: domain save/restore semantics) |
+| `shutdown` | graceful power-off |
+| `reload` | recreate from config (Vagrant backend: re-reads the Vagrantfile) |
+| `destroy` | delete VM and its disks |
+| `setup` | Vagrant-only: generate the Vagrantfile from YAML |
+| `start-nodes` / `stop-nodes` | run `/vagrant/node_start.sh` / `node_stop.sh` inside Vagrant VMs |
+
+Requirements for the libvirt backend: `virt-install`, `virsh`, `qemu-img`,
+`xorriso`, and a user in the `libvirt` group.
+
+## Configuration (libvirt backend)
+
+All fields in the YAML (`internal/config`): `vmCount`, `cpus`, `memory`,
+`nameBase`, `backendType`, `diskImage`, `network`, `osVariant`, `uefi`,
+`cpuModel` (`host-passthrough` needed for nested KVM), `stateDir`,
+`natsAddress` (host-reachable NATS), `ipBase`, `ipOffset`, `vmNetwork` /
+`vmIpBase` (guest-side network for VMs the node will host), `extras`
+(extra `node.env` pairs, e.g. `SINGULARITY_URL`).
+
+## Status
+
+Stable for the lab provisioning workflow (libvirt backend). The Vagrant
+backend is retained but legacy — it cannot run bootc nodes.
+
+## Bugs, disabled and unfinished features
+
+### Confirmed bugs
+
+| Where | Effect |
+|---|---|
+| README/install instructions historically pointed at personal forks (`radepejanvic/wormhole`) and `control_plane_start.sh` — fixed here. |
+| Vagrant backend is legacy | Its VMs are plain Ubuntu + Docker (no OSTree/greenboot); OS-update experiments silently can't run there. Use the libvirt backend for anything bootc. |
+
+### Disabled / unfinished features
+
+- **No test suite** (`go test ./...` → no test files); behavior is verified
+  by lab runs.
+- The guest `ssh -J` (ProxyJump through `host-1` to nested VMs) **fails** —
+  host-1's sshd refuses every forward, cause not found. Workaround used by
+  the lab: serial-console helper (`tools/experiments/vm_console.py`,
+  `source common.sh; vm_run vm-01 '<cmd>'`).
+- Dockerized "simulated" nodes (`tools/node.yml`, `NODES_NUM`) share nothing
+  with this tool's state; they exist for CP-logic testing only.
+
+### PoC boundaries (by design, not bugs)
+
+- Provisioning is external/opaque to the control plane by thesis scope: the
+  CP starts at first boot of an already-prepared machine.
+- No TLS/auth anywhere: lab networks only.
