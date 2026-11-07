@@ -25,9 +25,10 @@ of view nothing distinguishes them from hand-provisioned hardware.
 | `config.host.yaml` | `host-1` — nested-KVM host that runs VMs for the reconciler | `ipOffset` 50 → `192.168.122.51` |
 | `config.libvirt.yaml` | `node-1..N` — plain bootc nodes | `ipOffset` 60 → `192.168.122.61..` |
 
-- `diskImage` must be built from edge-base v3.10 or newer (Supernova
-  `/build/qcow2`): older disks lack greenboot's GRUB snippet on `/boot`, and a
-  failing update then reboots forever instead of rolling back.
+- `diskImage` must be built from edge-base v3.10 or newer (Supernova's
+  `BuildQCOW2` / `cockpit image build qcow2`): older disks lack greenboot's
+  GRUB snippet on `/boot`, and a failing update then reboots forever instead
+  of rolling back.
 - VM names are `<nameBase>-<n>`; the address is `ipBase + ipOffset + n` and
   the MAC is derived from it. Keep `ipOffset` ranges disjoint across configs —
   `create` refuses an address another VM in the state dir already holds.
