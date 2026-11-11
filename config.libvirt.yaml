@@ -12,12 +12,12 @@ uefi: true
 # nested KVM: the guest hosts VMs, so it must see the virtualization extensions
 cpuModel: "host-passthrough"
 stateDir: "~/.wormhole/libvirt"
-natsAddress: "192.168.122.1:4222"    # host-published NATS port
+# control-plane addresses ship in the OS image (/usr/lib/c12s/node.env);
+# set natsAddress only to override them for these nodes
+# natsAddress: "192.168.122.1:4222"
 ipBase: "192.168.122."
 ipOffset: 60                         # node-1 -> 192.168.122.61
 # guest-side libvirt network for the VMs this node creates (must differ from
 # the outer 192.168.122.0/24 the node's own NIC sits on)
 vmNetwork: "c12s-vms"
 vmIpBase: "192.168.123"
-extras:
-  SINGULARITY_URL: "http://192.168.122.1:8081"

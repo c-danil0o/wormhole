@@ -27,7 +27,7 @@ type Config struct {
 	Network     string            `yaml:"network"`     // libvirt network, default "default"
 	OSVariant   string            `yaml:"osVariant"`   // virt-install --os-variant, default "fedora40"
 	StateDir    string            `yaml:"stateDir"`    // per-VM disks + seeds, default ~/.wormhole/libvirt
-	NATSAddress string            `yaml:"natsAddress"` // written into /var/lib/c12s/node.env on first boot
+	NATSAddress string            `yaml:"natsAddress"` // optional override; the default ships in the image
 	UEFI        bool              `yaml:"uefi"`        // boot via OVMF (bootc images are UEFI-only)
 	CPUModel    string            `yaml:"cpuModel"`    // virt-install --cpu (e.g. host-passthrough for nested KVM)
 	VMNetwork   string            `yaml:"vmNetwork"`   // guest-side libvirt network for VMs this node will host
@@ -81,9 +81,6 @@ func (conf *Config) validateVagrant() error {
 func (conf *Config) validateLibvirt() error {
 	if conf.DiskImage == "" {
 		return fmt.Errorf("diskImage is required for the libvirt backend")
-	}
-	if conf.NATSAddress == "" {
-		return fmt.Errorf("natsAddress is required for the libvirt backend (written into node.env)")
 	}
 	if conf.IPBase == "" {
 		return fmt.Errorf("ipBase is required for the libvirt backend (static per-VM addressing)")

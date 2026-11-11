@@ -3,6 +3,7 @@ package backends
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/c12s/wormhole/internal/config"
@@ -68,5 +69,21 @@ func TestAddressOwnerDetectsCollision(t *testing.T) {
 	}
 	if owner := l.addressOwner("192.168.122.61", "node-1"); owner != "" {
 		t.Errorf("free address reported taken by %q", owner)
+	}
+}
+
+func TestNodeEnvLinesPerNodeOnly(t *testing.T) {
+	lines := nodeEnvLines("", map[string]string{"VM_NETWORK": "c12s-vms", "VM_IP_BASE": "192.168.123"})
+	got := strings.Join(lines, "\n")
+	if strings.Contains(got, "NATS_ADDRESS") {
+		t.Fatalf("no NATS override configured, but seed sets it:\n%s", got)
+	}
+	for _, want := range []string{"VM_IP_BASE=192.168.123", "VM_NETWORK=c12s-vms"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q in:\n%s", want, got)
+		}
+	}
+	if !strings.Contains(strings.Join(nodeEnvLines("10.0.0.1:4222", nil), "\n"), "NATS_ADDRESS=10.0.0.1:4222") {
+		t.Fatal("NATS override not written")
 	}
 }

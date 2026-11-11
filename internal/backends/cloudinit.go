@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -157,20 +158,21 @@ func deterministicMAC(address string) string {
 	return fmt.Sprintf("52:54:00:%02x:%02x:%02x", ip[1], ip[2], ip[3])
 }
 
+// nodeEnvLines is the per-node part of node.env. Shared settings and the
+// control-plane addresses ship in the OS image (/usr/lib/c12s/node.env); the
+// seed adds only what differs per machine, plus an optional NATS override.
 func nodeEnvLines(natsAddress string, extras map[string]string) []string {
-	lines := []string{
-		"NATS_ADDRESS=" + natsAddress,
-		"NODE_ID_DIR_PATH=/var/lib/c12s",
-		"NODE_ID_FILE_NAME=nodeid",
-		"REGISTRATION_REQ_TIMEOUT_MILLISECONDS=10000",
-		"MAX_REGISTRATION_RETRIES=3",
-		"BIND_ADDRESS=0.0.0.0",
-		"BIND_PORT=7946",
-		"STAR_ADDRESS=:11000",
-		"OS_POLL_INTERVAL=30s",
+	lines := []string{"# per-node values; defaults: /usr/lib/c12s/node.env (image)"}
+	if natsAddress != "" {
+		lines = append(lines, "NATS_ADDRESS="+natsAddress)
 	}
-	for k, v := range extras {
-		lines = append(lines, k+"="+v)
+	keys := make([]string, 0, len(extras))
+	for k := range extras {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		lines = append(lines, k+"="+extras[k])
 	}
 	return lines
 }

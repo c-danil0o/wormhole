@@ -1,7 +1,7 @@
 # wormhole — local VM provisioning CLI
 
 Turns a qcow2 bootc disk into running lab machines: creates libvirt VMs with
-a NoCloud seed that writes `/var/lib/c12s/node.env`, then lets the VMs boot
+a NoCloud seed that writes the per-node `/var/lib/c12s/node.env`, then lets the VMs boot
 and enroll into the control plane by themselves. A **lab/dev tool** — it is
 explicitly not part of the control plane's delivery path (first install is
 out of CP scope; see the thesis plan's provisioning boundary).
@@ -13,7 +13,7 @@ out of CP scope; see the thesis plan's provisioning boundary).
 | Plain bootc node (`host-1`) | `wormhole -c config.host.yaml create` — a plain bootc node; no libvirt, no nested VMs |
 | Base node with libvirt capability (`node-1..N`) | `wormhole -c config.libvirt.yaml create` — runs the VM reconciler and its own nested VMs |
 | Legacy Vagrant nodes | `backendType: "vagrant"` — plain Ubuntu+Docker VMs; **cannot test bootc** |
-| Provisioning data | NoCloud seed: `/var/lib/c12s/node.env` (CP addresses), optional guest-side libvirt network XML, SSH user `c12s` (password `c12s`, or your `~/.ssh/id_*.pub` injected) |
+| Provisioning data | NoCloud seed: `/var/lib/c12s/node.env` (per-node values only; the CP addresses ship in the image at `/usr/lib/c12s/node.env`), optional guest-side libvirt network XML, SSH user `c12s` (password `c12s`, or your `~/.ssh/id_*.pub` injected) |
 
 VMs created this way are ordinary c12s nodes: from the control plane's point
 of view nothing distinguishes them from hand-provisioned hardware.
@@ -66,9 +66,9 @@ Requirements for the libvirt backend: `virt-install`, `virsh`, `qemu-img`,
 All fields in the YAML (`internal/config`): `vmCount`, `cpus`, `memory`,
 `nameBase`, `backendType`, `diskImage`, `network`, `osVariant`, `uefi`,
 `cpuModel` (`host-passthrough` needed for nested KVM), `stateDir`,
-`natsAddress` (host-reachable NATS), `ipBase`, `ipOffset`, `vmNetwork` /
+`natsAddress` (optional override of the image's NATS address), `ipBase`, `ipOffset`, `vmNetwork` /
 `vmIpBase` (guest-side network for VMs the node will host), `extras`
-(extra `node.env` pairs, e.g. `SINGULARITY_URL`).
+(extra per-node `node.env` pairs).
 
 ## Status
 
