@@ -272,7 +272,7 @@ func (l *LibvirtBackend) osVariant() string {
 	if l.conf.OSVariant != "" {
 		return l.conf.OSVariant
 	}
-	return "fedora40"
+	return "fedora-unknown"
 }
 
 func (l *LibvirtBackend) ipOffset() int {

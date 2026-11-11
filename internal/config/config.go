@@ -25,7 +25,7 @@ type Config struct {
 	// libvirt backend
 	DiskImage   string            `yaml:"diskImage"`   // source qcow2 the VMs are created from (required)
 	Network     string            `yaml:"network"`     // libvirt network, default "default"
-	OSVariant   string            `yaml:"osVariant"`   // virt-install --os-variant, default "fedora40"
+	OSVariant   string            `yaml:"osVariant"`   // virt-install --os-variant, default "fedora-unknown"
 	StateDir    string            `yaml:"stateDir"`    // per-VM disks + seeds, default ~/.wormhole/libvirt
 	NATSAddress string            `yaml:"natsAddress"` // optional override; the default ships in the image
 	UEFI        bool              `yaml:"uefi"`        // boot via OVMF (bootc images are UEFI-only)

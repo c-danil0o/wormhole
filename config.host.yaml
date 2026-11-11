@@ -7,7 +7,7 @@ nameBase: "host"
 backendType: "libvirt"
 diskImage: "~/.wormhole/images/edge-base-v4.0.qcow2"
 network: "default"
-osVariant: "fedora41"
+osVariant: "fedora-unknown"   # newest Fedora libvirt knows; only picks virtual hardware
 uefi: true
 stateDir: "~/.wormhole/libvirt"
 # control-plane addresses ship in the OS image (/usr/lib/c12s/node.env);
