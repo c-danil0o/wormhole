@@ -10,8 +10,8 @@ out of CP scope; see the thesis plan's provisioning boundary).
 
 | Task | How |
 |---|---|
-| Lab host with nested KVM (`host-1`) | `wormhole -c config.host.yaml create` — runs host-1, which hosts the VM reconciler and its own nested VMs |
-| Plain bootc nodes (`node-1..N`) | `wormhole -c config.libvirt.yaml create` |
+| Plain bootc node (`host-1`) | `wormhole -c config.host.yaml create` — a plain bootc node; no libvirt, no nested VMs |
+| Base node with libvirt capability (`node-1..N`) | `wormhole -c config.libvirt.yaml create` — runs the VM reconciler and its own nested VMs |
 | Legacy Vagrant nodes | `backendType: "vagrant"` — plain Ubuntu+Docker VMs; **cannot test bootc** |
 | Provisioning data | NoCloud seed: `/var/lib/c12s/node.env` (CP addresses), optional guest-side libvirt network XML, SSH user `c12s` (password `c12s`, or your `~/.ssh/id_*.pub` injected) |
 
@@ -22,8 +22,8 @@ of view nothing distinguishes them from hand-provisioned hardware.
 
 | file | VMs | addresses |
 |------|-----|-----------|
-| `config.host.yaml` | `host-1` — nested-KVM host that runs VMs for the reconciler | `ipOffset` 50 → `192.168.122.51` |
-| `config.libvirt.yaml` | `node-1..N` — plain bootc nodes | `ipOffset` 60 → `192.168.122.61..` |
+| `config.host.yaml` | `host-1` — plain bootc node | `ipOffset` 50 → `192.168.122.51` |
+| `config.libvirt.yaml` | `node-1..N` — base with libvirt capability, runs the VM reconciler | `ipOffset` 60 → `192.168.122.61..` |
 
 - `diskImage` must be built from edge-base v3.10 or newer (Supernova's
   `BuildQCOW2` / `cockpit image build qcow2`): older disks lack greenboot's
