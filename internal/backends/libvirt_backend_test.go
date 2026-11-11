@@ -87,3 +87,72 @@ func TestNodeEnvLinesPerNodeOnly(t *testing.T) {
 		t.Fatal("NATS override not written")
 	}
 }
+
+func writeKey(t *testing.T, dir, name, key string) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(key+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestResolveLoginDefaults(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeKey(t, filepath.Join(home, ".ssh"), "id_ed25519.pub", "ssh-ed25519 AAAAhome me@lab")
+
+	login, err := resolveLogin(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if login.user != "c12s" || login.password != "c12s" || len(login.keys) != 1 || login.keys[0] != "ssh-ed25519 AAAAhome me@lab" {
+		t.Fatalf("defaults: %+v", login)
+	}
+	userData := renderUserData(login, "", "")
+	for _, want := range []string{"name: c12s", `password: "c12s"`, "ssh_pwauth: true", "lock_passwd: false", "- ssh-ed25519 AAAAhome me@lab"} {
+		if !strings.Contains(userData, want) {
+			t.Errorf("default user-data missing %q:\n%s", want, userData)
+		}
+	}
+}
+
+func TestResolveLoginCustomKeysOnly(t *testing.T) {
+	dir := t.TempDir()
+	keyFile := writeKey(t, dir, "ops.pub", "ssh-ed25519 AAAAfile ops@lab")
+	empty := ""
+	login, err := resolveLogin(&config.Login{
+		User:     "ops",
+		Password: &empty,
+		SSHKeys:  []string{keyFile, "ssh-rsa AAAAliteral other@lab"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	userData := renderUserData(login, "", "")
+	for _, want := range []string{"name: ops", "lock_passwd: true", "ssh_pwauth: false", "- ssh-ed25519 AAAAfile ops@lab", "- ssh-rsa AAAAliteral other@lab"} {
+		if !strings.Contains(userData, want) {
+			t.Errorf("user-data missing %q:\n%s", want, userData)
+		}
+	}
+	if strings.Contains(userData, "chpasswd") {
+		t.Errorf("no password set, but user-data sets one:\n%s", userData)
+	}
+}
+
+func TestResolveLoginRejectsNoWayIn(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // no ~/.ssh keys
+	empty := ""
+	if _, err := resolveLogin(&config.Login{Password: &empty}); err == nil {
+		t.Fatal("no password and no ssh keys must be rejected")
+	}
+	if _, err := resolveLogin(&config.Login{User: "Bad User"}); err == nil {
+		t.Fatal("invalid user name must be rejected")
+	}
+	if _, err := resolveLogin(&config.Login{SSHKeys: []string{"/nope/missing.pub"}}); err == nil {
+		t.Fatal("missing key file must be rejected")
+	}
+}

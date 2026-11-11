@@ -2,10 +2,12 @@ package backends
 
 import (
 	"fmt"
+	"github.com/c12s/wormhole/internal/config"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -31,13 +33,11 @@ type seedSpec struct {
 	extras      map[string]string
 	vmNetwork   string
 	vmIpBase    string
+	login       seedLogin
 }
 
 func buildSeed(spec seedSpec) error {
 	metaData := fmt.Sprintf("instance-id: %s\nlocal-hostname: %s\n", spec.domain, spec.domain)
-
-	// Read host SSH public keys for passwordless access from the lab host.
-	sshKeys := collectSSHPubKeys()
 
 	env := strings.Join(nodeEnvLines(spec.natsAddress, spec.extras), "\n")
 	writeFiles := fmt.Sprintf(`  - path: /var/lib/c12s/node.env
@@ -62,28 +62,7 @@ func buildSeed(spec seedSpec) error {
     fi`, spec.vmNetwork, spec.vmNetwork)
 	}
 
-	userData := fmt.Sprintf(`#cloud-config
-users:
-  - name: c12s
-    gecos: c12s debug user
-    groups: [wheel]
-    shell: /bin/bash
-    lock_passwd: false
-    sudo: ALL=(ALL) NOPASSWD:ALL
-    ssh_authorized_keys:
-%s
-chpasswd:
-  expire: false
-  users:
-    - name: c12s
-      password: c12s
-      type: text
-ssh_pwauth: true
-write_files:
-%s
-runcmd:
-%s
-`, indent(strings.Join(sshKeys, "\n"), "      "), writeFiles, runcmd)
+	userData := renderUserData(spec.login, writeFiles, runcmd)
 
 	// explicit network config (NoCloud seed, format v1): match the NIC by
 	// the deterministic MAC wormhole assigns, static address per VM name.
@@ -177,13 +156,83 @@ func nodeEnvLines(natsAddress string, extras map[string]string) []string {
 	return lines
 }
 
-// collectSSHPubKeys reads ~/.ssh/id_*.pub files so cloud-init can inject
-// them into the VM user's authorized_keys. Returns YAML list items
-// (each prefixed with "- ").
-func collectSSHPubKeys() []string {
+const (
+	defaultLoginUser     = "c12s"
+	defaultLoginPassword = "c12s"
+)
+
+var loginUserRe = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
+
+// seedLogin is the resolved login user of a machine's seed.
+type seedLogin struct {
+	user     string
+	password string // empty: password login disabled
+	keys     []string
+}
+
+// resolveLogin applies the defaults to the config's login block and reads
+// the key files, so a bad path fails before any VM is created.
+func resolveLogin(conf *config.Login) (seedLogin, error) {
+	login := seedLogin{user: defaultLoginUser, password: defaultLoginPassword}
+	var keySources []string
+	if conf != nil {
+		if conf.User != "" {
+			login.user = conf.User
+		}
+		if conf.Password != nil {
+			login.password = *conf.Password
+		}
+		keySources = conf.SSHKeys
+	}
+	if !loginUserRe.MatchString(login.user) {
+		return login, fmt.Errorf("login.user %q is not a valid user name", login.user)
+	}
+	if len(keySources) == 0 {
+		login.keys = defaultSSHPubKeys()
+	}
+	for _, src := range keySources {
+		key, err := readSSHKey(src)
+		if err != nil {
+			return login, err
+		}
+		login.keys = append(login.keys, key)
+	}
+	if login.password == "" && len(login.keys) == 0 {
+		return login, fmt.Errorf("login: no password and no ssh keys, nobody could log in")
+	}
+	return login, nil
+}
+
+// readSSHKey takes a literal public key ("ssh-ed25519 AAAA...") or a path to
+// a .pub file.
+func readSSHKey(src string) (string, error) {
+	if strings.HasPrefix(src, "ssh-") || strings.HasPrefix(src, "ecdsa-") || strings.HasPrefix(src, "sk-") {
+		return strings.TrimSpace(src), nil
+	}
+	path := src
+	if strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		path = filepath.Join(home, path[2:])
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("login.sshKeys: %w", err)
+	}
+	key := strings.TrimSpace(string(data))
+	if key == "" {
+		return "", fmt.Errorf("login.sshKeys: %s is empty", src)
+	}
+	return key, nil
+}
+
+// defaultSSHPubKeys reads ~/.ssh/id_*.pub, so the lab host can ssh in.
+func defaultSSHPubKeys() []string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return []string{"- \"\""}
+		return nil
 	}
 	matches, _ := filepath.Glob(filepath.Join(home, ".ssh", "id_*.pub"))
 	var keys []string
@@ -192,15 +241,40 @@ func collectSSHPubKeys() []string {
 		if err != nil {
 			continue
 		}
-		key := strings.TrimSpace(string(data))
-		if key != "" {
-			keys = append(keys, fmt.Sprintf("- %s", key))
+		if key := strings.TrimSpace(string(data)); key != "" {
+			keys = append(keys, key)
 		}
 	}
-	if len(keys) == 0 {
-		return []string{"- \"\""}
-	}
 	return keys
+}
+
+// renderUserData is the #cloud-config of a machine: its login user, then the
+// files and commands the seed adds.
+func renderUserData(login seedLogin, writeFiles, runcmd string) string {
+	var b strings.Builder
+	b.WriteString("#cloud-config\nusers:\n")
+	fmt.Fprintf(&b, "  - name: %s\n    gecos: c12s login user\n    groups: [wheel]\n    shell: /bin/bash\n", login.user)
+	fmt.Fprintf(&b, "    lock_passwd: %t\n    sudo: ALL=(ALL) NOPASSWD:ALL\n", login.password == "")
+	if len(login.keys) > 0 {
+		b.WriteString("    ssh_authorized_keys:\n")
+		for _, key := range login.keys {
+			fmt.Fprintf(&b, "      - %s\n", key)
+		}
+	}
+	if login.password != "" {
+		fmt.Fprintf(&b, "chpasswd:\n  expire: false\n  users:\n    - name: %s\n      password: %q\n      type: text\n", login.user, login.password)
+	}
+	fmt.Fprintf(&b, "ssh_pwauth: %t\n", login.password != "")
+	if writeFiles != "" {
+		b.WriteString("write_files:\n" + writeFiles)
+		if !strings.HasSuffix(writeFiles, "\n") {
+			b.WriteString("\n")
+		}
+	}
+	if runcmd != "" {
+		b.WriteString("runcmd:\n" + runcmd + "\n")
+	}
+	return b.String()
 }
 
 func indent(s, prefix string) string {

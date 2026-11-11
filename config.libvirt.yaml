@@ -21,3 +21,9 @@ ipOffset: 60                         # node-1 -> 192.168.122.61
 # the outer 192.168.122.0/24 the node's own NIC sits on)
 vmNetwork: "c12s-vms"
 vmIpBase: "192.168.123"
+# login user cloud-init creates (omit the block for the lab default:
+# user c12s, password c12s, keys from ~/.ssh/id_*.pub)
+# login:
+#   user: c12s
+#   password: ""                        # "" = no password login, ssh keys only
+#   sshKeys: ["~/.ssh/id_ed25519.pub"]  # .pub files or literal keys

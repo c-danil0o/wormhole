@@ -13,7 +13,7 @@ out of CP scope; see the thesis plan's provisioning boundary).
 | Plain bootc node (`host-1`) | `wormhole -c config.host.yaml create` — a plain bootc node; no libvirt, no nested VMs |
 | Base node with libvirt capability (`node-1..N`) | `wormhole -c config.libvirt.yaml create` — runs the VM reconciler and its own nested VMs |
 | Legacy Vagrant nodes | `backendType: "vagrant"` — plain Ubuntu+Docker VMs; **cannot test bootc** |
-| Provisioning data | NoCloud seed: `/var/lib/c12s/node.env` (per-node values only; the CP addresses ship in the image at `/usr/lib/c12s/node.env`), optional guest-side libvirt network XML, SSH user `c12s` (password `c12s`, or your `~/.ssh/id_*.pub` injected) |
+| Provisioning data | NoCloud seed: `/var/lib/c12s/node.env` (per-node values only; the CP addresses ship in the image at `/usr/lib/c12s/node.env`), optional guest-side libvirt network XML, login user from the config's `login` block (default `c12s`/`c12s` plus your `~/.ssh/id_*.pub`) |
 
 VMs created this way are ordinary c12s nodes: from the control plane's point
 of view nothing distinguishes them from hand-provisioned hardware.
@@ -68,7 +68,11 @@ All fields in the YAML (`internal/config`): `vmCount`, `cpus`, `memory`,
 `cpuModel` (`host-passthrough` needed for nested KVM), `stateDir`,
 `natsAddress` (optional override of the image's NATS address), `ipBase`, `ipOffset`, `vmNetwork` /
 `vmIpBase` (guest-side network for VMs the node will host), `extras`
-(extra per-node `node.env` pairs).
+(extra per-node `node.env` pairs), `login` (the user the seed creates:
+`user`, `password` — `""` disables password login —, `sshKeys` as `.pub`
+paths or literal keys; without the block: `c12s`/`c12s` plus your
+`~/.ssh/id_*.pub`). Neither a password nor a key is rejected before any VM is
+created.
 
 ## Status
 

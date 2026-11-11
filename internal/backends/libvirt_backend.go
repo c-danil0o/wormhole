@@ -83,19 +83,24 @@ func (l *LibvirtBackend) Create(vms ...string) error {
 	if err := l.Setup(l.conf); err != nil {
 		return err
 	}
+	// resolve the login once: a bad key path fails before any VM exists
+	login, err := resolveLogin(l.conf.Login)
+	if err != nil {
+		return err
+	}
 	for _, vm := range l.names(vms) {
 		if l.domainExists(l.domain(vm)) {
 			fmt.Printf("==> %s already exists, skipping (destroy it to recreate)\n", l.domain(vm))
 			continue
 		}
-		if err := l.createVM(vm); err != nil {
+		if err := l.createVM(vm, login); err != nil {
 			return fmt.Errorf("create %s: %w", vm, err)
 		}
 	}
 	return nil
 }
 
-func (l *LibvirtBackend) createVM(name string) error {
+func (l *LibvirtBackend) createVM(name string, login seedLogin) error {
 	dir := l.vmDir(name)
 	disk := filepath.Join(dir, "disk.qcow2")
 	seed := filepath.Join(dir, "seed.iso")
@@ -123,6 +128,7 @@ func (l *LibvirtBackend) createVM(name string) error {
 		extras:      l.seedExtras(),
 		vmNetwork:   l.conf.VMNetwork,
 		vmIpBase:    l.conf.VMIpBase,
+		login:       login,
 	}); err != nil {
 		return err
 	}

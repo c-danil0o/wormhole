@@ -34,6 +34,15 @@ type Config struct {
 	VMIpBase    string            `yaml:"vmIpBase"`    // subnet base of that network, e.g. "192.168.123"
 	IPOffset    int               `yaml:"ipOffset"`    // <name>-N gets ipBase+ipOffset+N, default 50; keep ranges disjoint across configs
 	Extras      map[string]string `yaml:"extras"`      // extra key=value pairs for node.env
+	Login       *Login            `yaml:"login"`       // login user the seed creates; nil = c12s/c12s + ~/.ssh/id_*.pub
+}
+
+// Login is the user cloud-init creates on each machine. Unset fields keep
+// the lab defaults: user c12s, password c12s, keys from ~/.ssh/id_*.pub.
+type Login struct {
+	User     string   `yaml:"user"`
+	Password *string  `yaml:"password"` // "" = no password login (ssh keys only)
+	SSHKeys  []string `yaml:"sshKeys"`  // public-key files (~ allowed) or literal keys
 }
 
 func (conf *Config) Validate() error {
