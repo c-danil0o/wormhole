@@ -9,6 +9,9 @@ diskImage: "~/.wormhole/images/edge-base-v4.0.qcow2"
 network: "default"
 osVariant: "fedora-unknown"   # newest Fedora libvirt knows; only picks virtual hardware
 uefi: true
+# plain node: hide AMD-V/VT-x so it has no /dev/kvm and star does not report
+# run_vms (virt-install's default host-passthrough would expose them)
+cpuModel: "host-passthrough,disable=svm,disable=vmx"
 stateDir: "~/.wormhole/libvirt"
 # control-plane addresses ship in the OS image (/usr/lib/c12s/node.env);
 # set natsAddress only to override them for these nodes
