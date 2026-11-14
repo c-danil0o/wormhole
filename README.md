@@ -25,6 +25,10 @@ of view nothing distinguishes them from hand-provisioned hardware.
 | `config.host.yaml` | `host-1` — plain bootc node | `ipOffset` 50 → `192.168.122.51` |
 | `config.libvirt.yaml` | `node-1..N` — base with libvirt capability, runs the VM reconciler | `ipOffset` 60 → `192.168.122.61..` |
 
+- `diskImage` is a local file. Fetch the current disk from the disk
+  registry first, e.g. `curl -o ~/.wormhole/images/edge-base-v4.0.qcow2
+  localhost:8081/artifacts/edge-base-v4.0.qcow2` — wormhole never downloads
+  it, so an old copy silently installs an old OS.
 - `diskImage` must be built from edge-base v3.10 or newer (Supernova's
   `BuildQCOW2` / `cockpit image build qcow2`): older disks lack greenboot's
   GRUB snippet on `/boot`, and a failing update then reboots forever instead
@@ -90,10 +94,10 @@ backend is retained but legacy — it cannot run bootc nodes.
 
 ### Disabled / unfinished features
 
-- **No test suite** (`go test ./...` → no test files); behavior is verified
-  by lab runs.
-- The guest `ssh -J` (ProxyJump through `host-1` to nested VMs) **fails** —
-  host-1's sshd refuses every forward, cause not found. Workaround used by
+- **Few tests**: `internal/backends/libvirt_backend_test.go` covers seed
+  rendering (login block, per-node values); the rest is verified by lab runs.
+- The guest `ssh -J` (ProxyJump through the VM host `node-1` to its nested
+  VMs) **fails** — the host's sshd refuses every forward, cause not found. Workaround used by
   the lab: serial-console helper (`tools/experiments/vm_console.py`,
   `source common.sh; vm_run vm-01 '<cmd>'`).
 - Dockerized "simulated" nodes (`tools/node.yml`, `NODES_NUM`) share nothing
