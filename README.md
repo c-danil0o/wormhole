@@ -94,8 +94,9 @@ backend is retained but legacy — it cannot run bootc nodes.
 
 ### Disabled / unfinished features
 
-- **Few tests**: `internal/backends/libvirt_backend_test.go` covers seed
-  rendering (login block, per-node values); the rest is verified by lab runs.
+- **Few tests**: `internal/backends/libvirt_backend_test.go` covers static
+  addresses/MACs, address collisions, per-node `node.env` lines and the login
+  block; the rest is verified by lab runs.
 - The guest `ssh -J` (ProxyJump through the VM host `node-1` to its nested
   VMs) **fails** — the host's sshd refuses every forward, cause not found. Workaround used by
   the lab: serial-console helper (`tools/experiments/vm_console.py`,
