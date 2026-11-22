@@ -11,14 +11,13 @@ import (
 	"github.com/c12s/wormhole/internal/config"
 )
 
-// LibvirtBackend provisions bootc node VMs on the local KVM host
-// (decisions D7.2 / D7.1, the E2 experiment substrate):
+// LibvirtBackend provisions bootc node VMs on the local KVM host:
 //
 //   each VM is a qcow2 overlay over a Supernova-produced bootc OS image,
 //   plus a NoCloud seed that injects /var/lib/c12s/node.env on first boot.
 //   star runs inside the VM as a systemd service and enrolls into the CP
-//   like any other node — provisioning stays out of band, exactly as the
-//   thesis boundary requires (D1).
+//   like any other node — provisioning stays out of band of the control
+//   plane.
 
 const (
 	libvirtURI        = "qemu:///system"
@@ -290,7 +289,7 @@ func (l *LibvirtBackend) ipOffset() int {
 
 // addressOwner returns the other VM in the state dir whose seed already
 // claims address, or "" if it is free. Configs share the state dir and the
-// subnet, so host-1 and node-1 would otherwise both land on .51.
+// subnet, so the first VM of two configs would otherwise get the same address.
 func (l *LibvirtBackend) addressOwner(address, self string) string {
 	seeds, _ := filepath.Glob(filepath.Join(l.stateDir(), "*", "network-config"))
 	for _, seed := range seeds {
@@ -312,8 +311,8 @@ func (l *LibvirtBackend) addressOwner(address, self string) string {
 }
 
 // staticAddress derives a stable IPv4 from the VM name: the trailing number
-// (node-3 -> 3) is added to ipBase+offset. Keeps experiments reproducible:
-// node-1 is always the same address.
+// (node-3 -> 3) is added to ipBase+offset, so a VM keeps its address across
+// re-creation.
 func staticAddress(name, ipBase string, offset int) (string, error) {
 	digits := ""
 	for _, r := range name {

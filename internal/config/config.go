@@ -38,7 +38,7 @@ type Config struct {
 }
 
 // Login is the user cloud-init creates on each machine. Unset fields keep
-// the lab defaults: user c12s, password c12s, keys from ~/.ssh/id_*.pub.
+// the defaults: user c12s, password c12s, keys from ~/.ssh/id_*.pub.
 type Login struct {
 	User     string   `yaml:"user"`
 	Password *string  `yaml:"password"` // "" = no password login (ssh keys only)

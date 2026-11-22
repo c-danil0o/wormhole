@@ -15,7 +15,7 @@ import (
 // NoCloud seed generation: cloud-init picks up user-data/meta-data from a
 // volume labelled `cidata` on first boot. The user-data writes
 // /var/lib/c12s/node.env — the node's control-plane configuration, which
-// persists across every bootc switch and rollback (decision D5/D7.2).
+// persists across every bootc switch and rollback.
 //
 // When the VM is intended to host VMs (vmNetwork set), the seed also defines
 // and starts a dedicated libvirt network inside the guest. It must NOT be the
@@ -66,9 +66,9 @@ func buildSeed(spec seedSpec) error {
 
 	// explicit network config (NoCloud seed, format v1): match the NIC by
 	// the deterministic MAC wormhole assigns, static address per VM name.
-	// Static (not DHCP): the lab firewall drops DHCP broadcasts on the
-	// libvirt bridge while unicast passes; static also gives every node a
-	// stable, reproducible address for the experiments.
+	// Static (not DHCP): firewalls on the host can drop DHCP broadcasts on
+	// the libvirt bridge while unicast passes; static also gives every node a
+	// stable, reproducible address.
 	networkConfig := fmt.Sprintf(`version: 1
 config:
   - type: physical
@@ -228,7 +228,7 @@ func readSSHKey(src string) (string, error) {
 	return key, nil
 }
 
-// defaultSSHPubKeys reads ~/.ssh/id_*.pub, so the lab host can ssh in.
+// defaultSSHPubKeys reads ~/.ssh/id_*.pub, so the host user can ssh in.
 func defaultSSHPubKeys() []string {
 	home, err := os.UserHomeDir()
 	if err != nil {
