@@ -16,12 +16,12 @@ stateDir: "~/.wormhole/libvirt"
 # set natsAddress only to override them for these nodes
 # natsAddress: "192.168.122.1:4222"
 ipBase: "192.168.122."
-ipOffset: 60                         # node-1 -> 192.168.122.61
+ipOffset: 60                         # first VM -> 192.168.122.61
 # guest-side libvirt network for the VMs this node creates (must differ from
 # the outer 192.168.122.0/24 the node's own NIC sits on)
 vmNetwork: "c12s-vms"
 vmIpBase: "192.168.123"
-# login user cloud-init creates (omit the block for the lab default:
+# login user cloud-init creates (omit the block for the default:
 # user c12s, password c12s, keys from ~/.ssh/id_*.pub)
 # login:
 #   user: c12s
